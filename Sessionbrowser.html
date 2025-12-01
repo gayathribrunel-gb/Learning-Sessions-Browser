@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Learning Sessions Browser</title>
+    <style>
+      :root {
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial;
+        color-scheme: light;
+      }
+      body {
+        margin: 20px;
+        max-width: 980px;
+        line-height: 1.45;
+        color: #111;
+      }
+      h1 {
+        margin: 0 0 12px 0;
+        font-size: 1.6rem;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin: 12px 0;
+      }
+      input[type="search"] {
+        padding: 8px 10px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        width: 320px;
+      }
+      .btn {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #f3f4f6;
+        border: 1px solid #ddd;
+        cursor: pointer;
+      }
+      .btn[aria-pressed="true"] {
+        background: #e6f4ff;
+        border-color: #9ecfff;
+      }
+      .sim-error {
+        background: #fff4f4;
+        border-color: #ffd2d2;
+      }
+      #status {
+        margin-top: 8px;
+        min-height: 1.2em;
+      }
+      ul.list {
+        list-style: none;
+        padding: 0;
+        margin: 18px 0 0 0;
+      }
+      li.item {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px;
+        border: 1px solid #e6e6e6;
+        border-radius: 8px;
+        background: #fff;
+      }
+      .left {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .title {
+        font-weight: 600;
+        margin: 0 0 6px 0;
+        font-size: 1.02rem;
+      }
+      .meta {
+        font-size: 0.88rem;
+        color: #444;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #f0f4f8;
+        font-size: 0.78rem;
+      }
+      .controls-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .right {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .mark {
+        background: #fff3b0;
+        padding: 0 2px;
+        border-radius: 2px;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+        white-space: nowrap;
+      }
+      .no-results {
+        padding: 16px;
+        color: #666;
+        text-align: center;
+      }
+      @media (max-width: 520px) {
+        input[type="search"] {
+          width: 100%;
+        }
+        .meta {
+          font-size: 0.82rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Learning Sessions Browser</h1>
+
+    <div class="controls">
+      <input
+        id="search"
+        type="search"
+        placeholder="Search sessions by title..."
+        aria-label="Search sessions by title"
+      />
+      <div
+        class="controls-row"
+        role="group"
+        aria-label="Sorting and simulation controls"
+      >
+        <button
+          id="sortToggle"
+          class="btn"
+          aria-pressed="false"
+          title="Toggle sort direction"
+        >
+          Sort: Popularity ↓
+        </button>
+        <button id="simulateError" class="btn">
+          Simulate error (next load)
+        </button>
+        <button id="reload" class="btn">Reload data</button>
+      </div>
+    </div>
+
+    <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+    <ul id="list" class="list" role="list" aria-busy="false"></ul>
+
+    <template id="itemTemplate">
+      <li class="item" role="listitem">
+        <div class="left">
+          <div class="title"></div>
+          <div class="meta"></div>
+        </div>
+        <div class="right">
+          <button class="btn toggleComplete" aria-pressed="false">
+            Mark complete
+          </button>
+        </div>
+      </li>
+    </template>
+
+    <script>
+      /*************************************************************************
+       * Learning Sessions Browser - single-file implementation
+       * - Simulated load (500ms)
+       * - Simulated error (next load only)
+       * - Debounced search (300ms) with highlight
+       * - Stable sort by popularity, toggle direction
+       * - Accessible: aria-live status, aria-busy on list, aria-pressed for toggles
+       *************************************************************************/
+
+      // === Embedded sample JSON dataset ===
+      // Replace /sessions.json fetch code to load an external file if desired.
+      const sessionsData = [
+        {
+          id: "s1",
+          title: "Introduction to React",
+          tags: ["react", "frontend"],
+          mins: "60",
+          difficulty: "Beginner",
+          popularity: 120,
+          completed: false,
+        },
+        {
+          id: "s2",
+          title: "Advanced JavaScript Patterns",
+          tags: ["javascript", "patterns"],
+          mins: 90,
+          difficulty: "Advanced",
+          popularity: 95,
+          completed: false,
+        },
+        {
+          id: "s3",
+          title: "Accessibility Basics",
+          tags: ["a11y", "ux"],
+          mins: 40,
+          difficulty: "Beginner",
+          popularity: 95,
+          completed: true,
+        },
+        {
+          id: "s4",
+          title: "State Management with Redux",
+          tags: ["redux", "state"],
+          mins: "75",
+          difficulty: "Intermediate",
+          popularity: 78,
+          completed: false,
+        },
+        {
+          id: "s5",
+          title: "Testing with Jest",
+          tags: ["testing", "jest"],
+          mins: 50,
+          difficulty: "Intermediate",
+          popularity: 60,
+          completed: false,
+        },
+        {
+          id: "s6",
+          title: "CSS Grid Layout",
+          tags: ["css", "layout"],
+          mins: 30,
+          difficulty: "Beginner",
+          popularity: 95,
+          completed: false,
+        },
+        {
+          id: "s7",
+          title: "Node.js Streams",
+          tags: ["node", "backend"],
+          mins: 45,
+          difficulty: "Advanced",
+          popularity: 42,
+          completed: false,
+        },
+      ];
+
+      // === App state ===
+      let sessions = []; // normalized loaded sessions (with __origIndex)
+      let filtered = []; // current filtered array
+      let sortAsc = false; // default sort direction (false => descending)
+      let simulateNextError = false;
+      let requestSeq = 0; // increment token for race safety
+      const LOAD_DELAY_MS = 500;
+      const DEBOUNCE_MS = 300;
+
+      // Element refs
+      const statusEl = document.getElementById("status");
+      const listEl = document.getElementById("list");
+      const searchEl = document.getElementById("search");
+      const sortBtn = document.getElementById("sortToggle");
+      const simulateBtn = document.getElementById("simulateError");
+      const reloadBtn = document.getElementById("reload");
+      const tpl = document.getElementById("itemTemplate");
+
+      // === Helpers ===
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+      function setBusy(flag) {
+        listEl.setAttribute("aria-busy", flag ? "true" : "false");
+      }
+      function escapeHtml(s = "") {
+        return String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[c])
+        );
+      }
+
+      // Stable sort using __origIndex as tie breaker
+      function stableSort(arr, compare) {
+        return [...arr].sort((a, b) => {
+          const r = compare(a, b);
+          if (r !== 0) return r;
+          return (a.__origIndex || 0) - (b.__origIndex || 0);
+        });
+      }
+
+      // Highlight matched substring (case-insensitive) in title string.
+      // Returns an HTML-safe string with <mark> around matches.
+      function highlightTitle(title, query) {
+        if (!query) return escapeHtml(title);
+        const q = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // escape regex
+        const re = new RegExp("(" + q + ")", "ig");
+        return escapeHtml(title).replace(
+          re,
+          (match) => '<span class="mark">' + escapeHtml(match) + "</span>"
+        );
+      }
+
+      // === Simulated fetch (with delay and optional simulated error) ===
+      function fetchSessionsSimulated() {
+        const myReqId = ++requestSeq;
+        setBusy(true);
+        setStatus("Loading sessions…");
+        return new Promise((resolve, reject) => {
+          setTimeout(() => {
+            if (simulateNextError) {
+              simulateNextError = false;
+              setBusy(false);
+              setStatus("");
+              reject(new Error("Simulated network error"));
+              return;
+            }
+            // Normalize: ensure mins is numeric and attach original index for stable sort
+            const normalized = sessionsData.map((s, idx) => ({
+              ...s,
+              mins: Number(s.mins),
+              __origIndex: idx,
+            }));
+            resolve({ reqId: myReqId, data: normalized });
+          }, LOAD_DELAY_MS);
+        });
+      }
+
+      // === Rendering ===
+      function renderList(items, query = "") {
+        listEl.innerHTML = "";
+        if (!items || items.length === 0) {
+          const tmp = document.createElement("li");
+          tmp.className = "no-results";
+          tmp.textContent = "No sessions found.";
+          listEl.appendChild(tmp);
+          return;
+        }
+
+        for (const item of items) {
+          const node = tpl.content.firstElementChild.cloneNode(true);
+          const titleEl = node.querySelector(".title");
+          const metaEl = node.querySelector(".meta");
+          const toggleBtn = node.querySelector(".toggleComplete");
+
+          // Title with highlight
+          titleEl.innerHTML = highlightTitle(item.title, query);
+
+          // Meta information (safe escaped)
+          const tags =
+            item.tags && item.tags.length ? item.tags.join(", ") : "-";
+          metaEl.innerHTML = `
+        <span class="badge">⏱ ${
+          Number.isFinite(item.mins) ? item.mins + "m" : "-"
+        }</span>
+        <span class="badge">🔖 ${escapeHtml(tags)}</span>
+        <span class="badge">Difficulty: ${escapeHtml(
+          item.difficulty || "N/A"
+        )}</span>
+        <span class="badge">Popularity: ${escapeHtml(
+          String(item.popularity)
+        )}</span>
+      `;
+
+          // Toggle button state
+          toggleBtn.setAttribute(
+            "aria-pressed",
+            item.completed ? "true" : "false"
+          );
+          toggleBtn.textContent = item.completed
+            ? "Completed"
+            : "Mark complete";
+          toggleBtn.addEventListener("click", () => {
+            item.completed = !item.completed;
+            toggleBtn.setAttribute(
+              "aria-pressed",
+              item.completed ? "true" : "false"
+            );
+            toggleBtn.textContent = item.completed
+              ? "Completed"
+              : "Mark complete";
+          });
+
+          listEl.appendChild(node);
+        }
+      }
+
+      // === Search & debounce logic ===
+      let searchTimer = null;
+      function scheduleSearch(query) {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          performSearch(query);
+        }, DEBOUNCE_MS);
+      }
+
+      function performSearch(query) {
+        setStatus("Searching…");
+        // Filter locally (we've already loaded data). If the app fetched each time, we'd call fetchSessionsSimulated.
+        const q = (query || "").trim().toLowerCase();
+        const results = sessions.filter((s) =>
+          s.title.toLowerCase().includes(q)
+        );
+        // Sort based on current sort preference
+        filtered = stableSort(results, (a, b) =>
+          sortAsc ? a.popularity - b.popularity : b.popularity - a.popularity
+        );
+        renderList(filtered, q);
+        setStatus("");
+      }
+
+      // === Buttons event handlers ===
+      sortBtn.addEventListener("click", () => {
+        sortAsc = !sortAsc;
+        sortBtn.setAttribute("aria-pressed", String(sortAsc));
+        sortBtn.textContent = `Sort: Popularity ${sortAsc ? "↑" : "↓"}`;
+        // Re-sort currently filtered (or full list)
+        filtered = stableSort(filtered.length ? filtered : sessions, (a, b) =>
+          sortAsc ? a.popularity - b.popularity : b.popularity - a.popularity
+        );
+        renderList(filtered, searchEl.value.trim());
+      });
+
+      simulateBtn.addEventListener("click", () => {
+        simulateNextError = true;
+        simulateBtn.classList.add("sim-error");
+        simulateBtn.textContent = "Simulating next load (on)";
+        setTimeout(() => {
+          // visual feedback reset after a short while so user sees effect is armed
+          simulateBtn.classList.remove("sim-error");
+        }, 1200);
+      });
+
+      reloadBtn.addEventListener("click", () => {
+        // Trigger a fresh load (simulated fetch)
+        loadInitialData();
+      });
+
+      searchEl.addEventListener("input", (e) => {
+        scheduleSearch(e.target.value);
+      });
+
+      // === Error display & retry ===
+      function showError(msg) {
+        setBusy(false);
+        statusEl.innerHTML = "";
+        const p = document.createElement("div");
+        p.textContent = "Error: " + msg;
+        p.style.marginBottom = "8px";
+
+        const retry = document.createElement("button");
+        retry.className = "btn";
+        retry.textContent = "Retry";
+        retry.addEventListener("click", () => {
+          statusEl.textContent = "";
+          loadInitialData();
+        });
+
+        statusEl.appendChild(p);
+        statusEl.appendChild(retry);
+      }
+
+      // === Initial load ===
+      function loadInitialData() {
+        const currentReqToken = ++requestSeq;
+        setBusy(true);
+        setStatus("Loading sessions…");
+
+        fetchSessionsSimulated()
+          .then(({ reqId, data }) => {
+            // ignore stale responses
+            if (reqId !== currentReqToken) return;
+            sessions = data;
+            // initial sort (desc popularity)
+            filtered = stableSort(sessions, (a, b) =>
+              sortAsc
+                ? a.popularity - b.popularity
+                : b.popularity - a.popularity
+            );
+            renderList(filtered, searchEl.value.trim());
+            setBusy(false);
+            setStatus("");
+          })
+          .catch((err) => {
+            // show friendly error + retry
+            showError(err.message || "Failed to load sessions");
+          });
+      }
+
+      // Kick off initial load on page ready
+      window.addEventListener("DOMContentLoaded", () => {
+        loadInitialData();
+        // Accessibility note: initial status cleared after load; aria-live will announce changes
+      });
+
+      // === Optional: allow pressing Enter in search to perform immediate search (no debounce) ===
+      searchEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          if (searchTimer) {
+            clearTimeout(searchTimer);
+            searchTimer = null;
+          }
+          performSearch(searchEl.value);
+        }
+      });
+
+      // === For convenience: expose small API in console for testing ===
+      window._sessionsApp = {
+        reload: loadInitialData,
+        simulateNextError: () => {
+          simulateNextError = true;
+        },
+        getSessions: () => sessions,
+      };
+    </script>
+  </body>
+</html>
